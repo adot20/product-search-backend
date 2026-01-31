@@ -11,15 +11,10 @@ async function scrapeFlipkart(query) {
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
-        '--disable-gpu',
-        '--disable-software-rasterizer',
-        '--disable-dev-tools',
-        '--no-first-run',
-        '--no-zygote',
-        '--single-process'
+        '--disable-gpu'
       ]
     });
-
+    
     const page = await browser.newPage();
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
     
@@ -27,11 +22,12 @@ async function scrapeFlipkart(query) {
     console.log(`[Flipkart] Navigating to: ${searchUrl}`);
     
     await page.goto(searchUrl, { 
-      waitUntil: 'networkidle2',
+      waitUntil: 'domcontentloaded',
       timeout: 30000 
     });
     
-    await page.waitForTimeout(3000);
+    // Wait for content to load (replaced waitForTimeout)
+    await new Promise(resolve => setTimeout(resolve, 3000));
     
     const productData = await page.evaluate(() => {
       const links = document.querySelectorAll('a[href*="/p/"]');
@@ -112,4 +108,3 @@ async function scrapeFlipkart(query) {
 }
 
 module.exports = scrapeFlipkart;
-
