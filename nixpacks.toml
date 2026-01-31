@@ -1,0 +1,2 @@
+[phases.setup]
+nixPkgs = ['...', 'pango', 'libxcb', 'libXcomposite', 'libXdamage', 'libXext', 'libXfixes', 'libXrandr', 'libgbm', 'libdrm', 'libxkbcommon', 'libxshmfence', 'libnss', 'libnspr', 'libatk', 'libatk-bridge', 'libcups', 'libdbus', 'libexpat', 'libxcb', 'cairo', 'pango', 'alsa-lib']
