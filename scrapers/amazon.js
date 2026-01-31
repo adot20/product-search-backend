@@ -11,16 +11,10 @@ async function scrapeAmazon(query) {
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
-        '--disable-gpu',
-        '--disable-software-rasterizer',
-        '--disable-dev-tools',
-        '--no-first-run',
-        '--no-zygote',
-        '--single-process'
+        '--disable-gpu'
       ]
     });
     
-
     const page = await browser.newPage();
     
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
@@ -29,11 +23,15 @@ async function scrapeAmazon(query) {
     console.log(`[Amazon] Navigating to: ${searchUrl}`);
     
     await page.goto(searchUrl, { 
-      waitUntil: 'networkidle2',
+      waitUntil: 'domcontentloaded',
       timeout: 30000 
     });
     
-    await page.waitForSelector('[data-component-type="s-search-result"]', { timeout: 10000 });
+    // Wait for results to appear
+    await page.waitForSelector('[data-component-type="s-search-result"]', { timeout: 15000 }).catch(() => null);
+    
+    // Extra wait for dynamic content
+    await new Promise(resolve => setTimeout(resolve, 2000));
     
     const productData = await page.evaluate(() => {
       const items = document.querySelectorAll('[data-component-type="s-search-result"]');
@@ -114,4 +112,3 @@ async function scrapeAmazon(query) {
 }
 
 module.exports = scrapeAmazon;
-
