@@ -6,11 +6,9 @@ const flipkartScraper = require('./scrapers/flipkart');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Middleware
 app.use(cors());
 app.use(express.json());
 
-// Health check endpoint
 app.get('/', (req, res) => {
   res.json({ 
     status: 'running', 
@@ -19,7 +17,6 @@ app.get('/', (req, res) => {
   });
 });
 
-// Main search endpoint
 app.post('/search', async (req, res) => {
   const { query, sites } = req.body;
   
@@ -37,7 +34,6 @@ app.post('/search', async (req, res) => {
       flipkart: flipkartScraper
     };
     
-    // Run all scrapers in parallel
     const promises = sites.map(site => {
       const scraper = scrapers[site];
       if (!scraper) {
