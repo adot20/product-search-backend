@@ -12,7 +12,6 @@ async function scrapeFlipkart(query) {
       executablePath: await chromium.executablePath(),
       headless: chromium.headless
     });
-
     
     const page = await browser.newPage();
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
@@ -25,10 +24,8 @@ async function scrapeFlipkart(query) {
       timeout: 30000 
     });
     
-    // Wait a bit for content to load
     await page.waitForTimeout(3000);
     
-    // Extract product data
     const productData = await page.evaluate(() => {
       const links = document.querySelectorAll('a[href*="/p/"]');
       
@@ -36,18 +33,14 @@ async function scrapeFlipkart(query) {
         const link = links[i];
         const rect = link.getBoundingClientRect();
         
-        // Skip small elements
         if (rect.height < 50) continue;
         
-        // Get all text
         const allText = link.textContent || '';
         
-        // Find title by splitting text
         const textParts = allText.split(/[₹★\n]/).map(t => t.trim()).filter(t => t.length > 0);
         
         let title = '';
         for (const part of textParts) {
-          // Skip prices, ratings, and short text
           if (/^\d+[,\d]*$/.test(part)) continue;
           if (/^\d\.\d$/.test(part)) continue;
           if (part.includes('% off')) continue;
@@ -61,19 +54,15 @@ async function scrapeFlipkart(query) {
         
         if (!title || title.length < 10) continue;
         
-        // Get price
         const priceMatch = allText.match(/₹([\d,]+)/);
         const price = priceMatch ? `₹${priceMatch[1]}` : null;
         
-        // Get rating
         const ratingMatch = allText.match(/(\d\.\d)\s*★/);
         const rating = ratingMatch ? ratingMatch[1] : null;
         
-        // Get image
         const img = link.querySelector('img');
         const image = img ? img.src : null;
         
-        // Get URL
         const url = link.href;
         
         return { title, price, rating, image, url };
@@ -116,20 +105,3 @@ async function scrapeFlipkart(query) {
 }
 
 module.exports = scrapeFlipkart;
-```
-
----
-
-### **5. Procfile** (For Railway)
-```
-web: node server.js
-```
-
----
-
-### **6. .gitignore**
-```
-node_modules/
-.env
-
-*.log
