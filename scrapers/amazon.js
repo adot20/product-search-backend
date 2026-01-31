@@ -1,4 +1,5 @@
-const puppeteer = require('puppeteer');
+const puppeteer = require('puppeteer-core');
+const chromium = require('@sparticuz/chromium');
 
 async function scrapeAmazon(query) {
   console.log(`[Amazon] Scraping for: ${query}`);
@@ -6,14 +7,12 @@ async function scrapeAmazon(query) {
   let browser;
   try {
     browser = await puppeteer.launch({
-      headless: 'new',
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-gpu'
-      ]
+      args: chromium.args,
+      defaultViewport: chromium.defaultViewport,
+      executablePath: await chromium.executablePath(),
+      headless: chromium.headless
     });
+
     
     const page = await browser.newPage();
     
@@ -116,5 +115,6 @@ async function scrapeAmazon(query) {
     }
   }
 }
+
 
 module.exports = scrapeAmazon;
