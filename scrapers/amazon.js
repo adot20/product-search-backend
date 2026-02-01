@@ -33,19 +33,36 @@ async function scrapeAmazon(query) {
     // Extra wait for dynamic content
     await new Promise(resolve => setTimeout(resolve, 2000));
     
-    const productData = await page.evaluate(() => {
+  const productData = await page.evaluate(() => {
+      // Debug: log what we found
       const items = document.querySelectorAll('[data-component-type="s-search-result"]');
+      console.log('Found items:', items.length);
+      
+      // Also check for captcha
+      const captcha = document.querySelector('#captchacharacters');
+      if (captcha) {
+        return { debug: 'CAPTCHA detected' };
+      }
+      
+      // Check if we're on the right page
+      const pageTitle = document.title;
+      console.log('Page title:', pageTitle);
       
       for (let i = 0; i < items.length && i < 10; i++) {
         const item = items[i];
         
-        if (item.textContent.toLowerCase().includes('sponsored')) {
+        const isSponsored = item.textContent.toLowerCase().includes('sponsored');
+        console.log(`Item ${i}: sponsored=${isSponsored}`);
+        
+        if (isSponsored) {
           continue;
         }
         
         const link = item.querySelector('h2 a') || 
                      item.querySelector('a.a-link-normal[href*="/dp/"]') ||
                      item.querySelector('a[href*="/dp/"]');
+        
+        console.log(`Item ${i}: link found=${!!link}`);
         
         if (!link) continue;
         
@@ -54,6 +71,8 @@ async function scrapeAmazon(query) {
                          link.querySelector('span');
         
         const title = titleSpan ? titleSpan.textContent.trim() : '';
+        
+        console.log(`Item ${i}: title length=${title.length}, title="${title.substring(0, 50)}"`);
         
         if (!title || title.length < 10) continue;
         
@@ -75,8 +94,19 @@ async function scrapeAmazon(query) {
         return { title, price, rating, image, url };
       }
       
-      return null;
+      return { debug: `No valid products found. Total items: ${items.length}` };
     });
+    
+    // Check if we got debug info
+    if (productData && productData.debug) {
+      console.log('[Amazon] Debug:', productData.debug);
+      return {
+        site: 'amazon',
+        error: true,
+        message: productData.debug,
+        searchUrl
+      };
+    }
     
     if (!productData) {
       console.log('[Amazon] No product found');
@@ -112,3 +142,4 @@ async function scrapeAmazon(query) {
 }
 
 module.exports = scrapeAmazon;
+
