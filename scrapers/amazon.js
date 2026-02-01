@@ -116,6 +116,17 @@ console.log('[Amazon] Page content sample:', bodyText);
       };
     }
     
+// Check if we got debug info
+    if (productData && productData.debug) {
+      console.log('[Amazon] Debug:', productData.debug);
+      return {
+        site: 'amazon',
+        error: true,
+        message: productData.debug,  // Show debug in extension
+        searchUrl
+      };
+    }
+    
     if (!productData) {
       console.log('[Amazon] No product found');
       return {
@@ -150,5 +161,6 @@ console.log('[Amazon] Page content sample:', bodyText);
 }
 
 module.exports = scrapeAmazon;
+
 
 
