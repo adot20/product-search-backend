@@ -32,6 +32,14 @@ async function scrapeAmazon(query) {
     
     // Extra wait for dynamic content
     await new Promise(resolve => setTimeout(resolve, 2000));
+
+    // Take screenshot for debugging
+const screenshot = await page.screenshot({ encoding: 'base64' });
+console.log('[Amazon] Screenshot taken, page loaded');
+
+// Log page content sample
+const bodyText = await page.evaluate(() => document.body.innerText.substring(0, 500));
+console.log('[Amazon] Page content sample:', bodyText);
     
   const productData = await page.evaluate(() => {
       // Debug: log what we found
@@ -142,4 +150,5 @@ async function scrapeAmazon(query) {
 }
 
 module.exports = scrapeAmazon;
+
 
