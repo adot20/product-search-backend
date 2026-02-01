@@ -16,7 +16,6 @@ async function scrapeAmazon(query) {
     });
     
     const page = await browser.newPage();
-    
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
     
     const searchUrl = `https://www.amazon.in/s?k=${encodeURIComponent(query)}`;
@@ -27,117 +26,86 @@ async function scrapeAmazon(query) {
       timeout: 30000 
     });
     
-    // Wait for results to appear
-    await page.waitForSelector('[data-component-type="s-search-result"]', { timeout: 15000 }).catch(() => null);
+    await new Promise(resolve => setTimeout(resolve, 3000));
     
-    // Extra wait for dynamic content
-    await new Promise(resolve => setTimeout(resolve, 2000));
-
-    // Take screenshot for debugging
-const screenshot = await page.screenshot({ encoding: 'base64' });
-console.log('[Amazon] Screenshot taken, page loaded');
-
-// Log page content sample
-const bodyText = await page.evaluate(() => document.body.innerText.substring(0, 500));
-console.log('[Amazon] Page content sample:', bodyText);
-    
-  const productData = await page.evaluate(() => {
-      // Debug: log what we found
-      const items = document.querySelectorAll('[data-component-type="s-search-result"]');
-      console.log('Found items:', items.length);
+    // More flexible extraction - try multiple strategies
+    const productData = await page.evaluate(() => {
+      // Strategy 1: Look for any product link with /dp/ in href
+      const allLinks = Array.from(document.querySelectorAll('a[href*="/dp/"]'));
       
-      // Also check for captcha
-      const captcha = document.querySelector('#captchacharacters');
-      if (captcha) {
-        return { debug: 'CAPTCHA detected' };
-      }
-      
-      // Check if we're on the right page
-      const pageTitle = document.title;
-      console.log('Page title:', pageTitle);
-      
-      for (let i = 0; i < items.length && i < 10; i++) {
-        const item = items[i];
+      for (const link of allLinks) {
+        // Skip if it's just a tiny link
+        const rect = link.getBoundingClientRect();
+        if (rect.width < 100 || rect.height < 50) continue;
         
-        const isSponsored = item.textContent.toLowerCase().includes('sponsored');
-        console.log(`Item ${i}: sponsored=${isSponsored}`);
+        // Get all text in this link area
+        const fullText = link.textContent || '';
         
-        if (isSponsored) {
-          continue;
+        // Skip if no substantial text
+        if (fullText.length < 20) continue;
+        
+        // Try to find title - look for any span with substantial text
+        const spans = link.querySelectorAll('span');
+        let title = '';
+        
+        for (const span of spans) {
+          const text = span.textContent.trim();
+          // Look for the longest meaningful text
+          if (text.length > title.length && text.length > 15 && text.length < 200) {
+            // Avoid price-like text
+            if (!text.startsWith('₹') && !text.startsWith('$')) {
+              title = text;
+            }
+          }
         }
-        
-        const link = item.querySelector('h2 a') || 
-                     item.querySelector('a.a-link-normal[href*="/dp/"]') ||
-                     item.querySelector('a[href*="/dp/"]');
-        
-        console.log(`Item ${i}: link found=${!!link}`);
-        
-        if (!link) continue;
-        
-        const titleSpan = link.querySelector('span.a-text-normal') || 
-                         link.querySelector('h2 span') ||
-                         link.querySelector('span');
-        
-        const title = titleSpan ? titleSpan.textContent.trim() : '';
-        
-        console.log(`Item ${i}: title length=${title.length}, title="${title.substring(0, 50)}"`);
         
         if (!title || title.length < 10) continue;
         
+        // Find price in the parent container
+        const parent = link.closest('[data-component-type="s-search-result"]') || link.parentElement;
+        
         let price = null;
-        const priceWhole = item.querySelector('.a-price-whole');
-        if (priceWhole) {
-          const priceFrac = item.querySelector('.a-price-fraction');
-          price = `₹${priceWhole.textContent.trim()}${priceFrac ? priceFrac.textContent.trim() : ''}`;
+        if (parent) {
+          const priceWhole = parent.querySelector('.a-price-whole');
+          if (priceWhole) {
+            const priceFrac = parent.querySelector('.a-price-fraction');
+            price = `₹${priceWhole.textContent.trim()}${priceFrac ? priceFrac.textContent.trim() : ''}`;
+          }
         }
         
-        const ratingEl = item.querySelector('.a-icon-alt');
-        const rating = ratingEl ? ratingEl.textContent.split(' ')[0] : null;
+        // Rating
+        let rating = null;
+        if (parent) {
+          const ratingEl = parent.querySelector('.a-icon-alt');
+          if (ratingEl) {
+            rating = ratingEl.textContent.split(' ')[0];
+          }
+        }
         
-        const img = item.querySelector('img.s-image');
+        // Image
+        const img = link.querySelector('img') || (parent ? parent.querySelector('img') : null);
         const image = img ? img.src : null;
         
+        // URL
         const url = link.href;
         
+        // Return first valid product
         return { title, price, rating, image, url };
       }
       
-      return { debug: `No valid products found. Total items: ${items.length}` };
+      return null;
     });
     
-    // Check if we got debug info
-    if (productData && productData.debug) {
-      console.log('[Amazon] Debug:', productData.debug);
-      return {
-        site: 'amazon',
-        error: true,
-        message: productData.debug,
-        searchUrl
-      };
-    }
-    
-// Check if we got debug info
-    if (productData && productData.debug) {
-      console.log('[Amazon] Debug:', productData.debug);
-      return {
-        site: 'amazon',
-        error: true,
-        message: productData.debug,  // Show debug in extension
-        searchUrl
-      };
-    }
-    
     if (!productData) {
-      console.log('[Amazon] No product found');
       return {
         site: 'amazon',
         error: true,
-        message: 'No products found',
+        message: 'Could not extract product data',
         searchUrl
       };
     }
     
-    console.log('[Amazon] Product found:', productData.title.substring(0, 50));
+    console.log('[Amazon] Found:', productData.title.substring(0, 50));
     
     return {
       site: 'amazon',
@@ -161,6 +129,3 @@ console.log('[Amazon] Page content sample:', bodyText);
 }
 
 module.exports = scrapeAmazon;
-
-
-
