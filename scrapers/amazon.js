@@ -66,11 +66,19 @@ async function scrapeAmazon(query) {
         
         let price = null;
         if (parent) {
-          const priceWhole = parent.querySelector('.a-price-whole');
-          if (priceWhole) {
-            const priceFrac = parent.querySelector('.a-price-fraction');
-            price = `₹${priceWhole.textContent.trim()}${priceFrac ? priceFrac.textContent.trim() : ''}`;
+          // Get the FIRST price container (not unit price)
+          const priceContainer = parent.querySelector('.a-price');
+          if (priceContainer) {
+            const priceWhole = priceContainer.querySelector('.a-price-whole');
+            const priceFrac = priceContainer.querySelector('.a-price-fraction');
+  
+            if (priceWhole) {
+              const whole = priceWhole.textContent.trim().replace(',', '');
+              const fraction = priceFrac ? priceFrac.textContent.trim() : '';
+              price = fraction ? `₹${whole}.${fraction}` : `₹${whole}`;
           }
+      }
+          
         }
         
         // Rating
@@ -129,3 +137,4 @@ async function scrapeAmazon(query) {
 }
 
 module.exports = scrapeAmazon;
+
