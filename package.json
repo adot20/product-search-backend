@@ -1,7 +1,7 @@
 {
   "name": "product-search-backend",
   "version": "2.0.0",
-  "description": "Backend scraper for multi-site product search",
+  "description": "Modular backend scraper for multi-site product search",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -14,6 +14,6 @@
     "cheerio": "^1.0.0-rc.12"
   },
   "engines": {
-    "node": ">=14.0.0"
+    "node": "18.x"
   }
 }
