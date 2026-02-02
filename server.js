@@ -19,43 +19,75 @@ app.get('/', (req, res) => {
 });
 
 app.post('/search', async (req, res) => {
-  const { query, sites } = req.body;
-  
-  console.log(`Search request: "${query}" for sites:`, sites);
-  
-  if (!query || !sites || sites.length === 0) {
-    return res.status(400).json({ 
-      error: 'Missing query or sites' 
-    });
-  }
-  
   try {
-    // Create SIMPLE mock results for testing
-    const results = sites.map(site => {
-      // Return basic product info
-      return {
+    const { query, sites } = req.body;
+    console.log(`Searching for: ${query} on sites:`, sites);
+    
+    const results = [];
+    
+    for (const site of sites) {
+      console.log(`Processing ${site}...`);
+      
+      let productData = null;
+      
+      // Handle each site differently
+      if (site === 'myntra') {
+        productData = await scrapeMyntra(query);
+      } else if (site === 'tira') {
+        productData = await scrapeTira(query);
+      } else {
+        // For other sites, return test data for now
+        productData = {
+          title: `${query} on ${site}`,
+          price: getRandomPrice(),
+          rating: '4.2',
+          url: getSearchUrl(site, query),
+          searchUrl: getSearchUrl(site, query)
+        };
+      }
+      
+      results.push({
         site: site,
-        title: `${query} on ${site}`,
-        price: '₹1,299', // Mock price
-        rating: '4.2',
-        image: null,
-        url: getSearchUrl(site, query),
-        searchUrl: getSearchUrl(site, query)
-      };
-    });
+        ...productData
+      });
+      
+      // Small delay between requests
+      await delay(500);
+    }
     
-    console.log('Returning test results');
-    
+    console.log('Returning', results.length, 'results');
     res.json({ results });
     
   } catch (error) {
     console.error('Search error:', error);
-    res.status(500).json({ 
-      error: 'Internal server error',
-      message: error.message 
-    });
+    res.status(500).json({ error: error.message });
   }
 });
+
+// Helper function to create search URLs
+function getSearchUrl(site, query) {
+  const encodedQuery = encodeURIComponent(query);
+  const urls = {
+    amazon: `https://www.amazon.in/s?k=${encodedQuery}`,
+    flipkart: `https://www.flipkart.com/search?q=${encodedQuery}`,
+    myntra: `https://www.myntra.com/${encodedQuery}`,
+    ajio: `https://www.ajio.com/search/?text=${encodedQuery}`,
+    nykaa: `https://www.nykaa.com/search/result/?q=${encodedQuery}`,
+    tira: `https://www.tirabeauty.com/search?q=${encodedQuery}`
+  };
+  return urls[site] || '';
+}
+
+// Helper function for random prices (for testing)
+function getRandomPrice() {
+  const prices = ['₹499', '₹699', '₹899', '₹1,199', '₹1,499', '₹1,999', '₹2,499'];
+  return prices[Math.floor(Math.random() * prices.length)];
+}
+
+// Helper function for delay
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 
 // Helper function to create search URLs
 function getSearchUrl(site, query) {
@@ -74,3 +106,4 @@ function getSearchUrl(site, query) {
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
+
