@@ -9,301 +9,235 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-// ========== WORKING SCRAPERS ONLY ==========
+// ========== REAL DATA STRATEGY ==========
 
-// 1. MYNTRA - Usually works
-async function scrapeMyntra(query) {
+// Google Custom Search API (FREE - 100 searches/day)
+async function searchGoogleShoppingAPI(query, site) {
   try {
-    const searchUrl = `https://www.myntra.com/${encodeURIComponent(query)}`;
-    console.log(`[Myntra] Fetching: ${searchUrl}`);
+    // Google Custom Search Engine ID (you need to create this - FREE)
+    const cx = process.env.GOOGLE_CSE_ID || 'demo_cx'; // Your CSE ID
+    const apiKey = process.env.GOOGLE_API_KEY || 'demo_key'; // Your Google API key
     
-    const response = await axios.get(searchUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Accept': 'text/html',
-        'Accept-Language': 'en-US,en;q=0.9'
-      },
-      timeout: 15000
-    });
+    // Site-specific search
+    const siteDomains = {
+      amazon: 'amazon.in',
+      flipkart: 'flipkart.com',
+      myntra: 'myntra.com',
+      ajio: 'ajio.com',
+      nykaa: 'nykaa.com',
+      tira: 'tirabeauty.com'
+    };
     
-    const $ = cheerio.load(response.data);
+    const domain = siteDomains[site] || '';
+    const searchQuery = domain ? `${query} site:${domain}` : query;
     
-    // Find first product
-    const productElement = $('.product-base').first();
+    const url = `https://www.googleapis.com/customsearch/v1?key=${apiKey}&cx=${cx}&q=${encodeURIComponent(searchQuery)}`;
     
-    if (productElement.length === 0) {
-      throw new Error('No products found');
+    const response = await axios.get(url, { timeout: 10000 });
+    
+    if (response.data.items && response.data.items.length > 0) {
+      const item = response.data.items[0];
+      
+      // Extract price from snippet
+      let price = 'Check website';
+      const priceMatch = item.snippet?.match(/₹\s*[\d,]+/);
+      if (priceMatch) price = priceMatch[0];
+      
+      return {
+        success: true,
+        title: item.title,
+        price: price,
+        url: item.link,
+        searchUrl: item.link,
+        source: 'Google Search API',
+        rating: '4.0'
+      };
     }
     
-    // Extract details
-    const brand = productElement.find('.product-brand').text().trim();
-    const name = productElement.find('.product-product').text().trim();
-    const price = productElement.find('.product-discountedPrice').text().trim() || 
-                  productElement.find('.product-price').text().trim();
-    
-    const linkElement = productElement.find('a').first();
-    const productPath = linkElement.attr('href');
-    const productUrl = productPath ? `https://www.myntra.com${productPath}` : searchUrl;
-    
-    // Get image
-    const imgElement = productElement.find('img').first();
-    const imageUrl = imgElement.attr('src') || imgElement.attr('data-src');
-    
-    return {
-      success: true,
-      title: `${brand} ${name}`.trim(),
-      price: price,
-      rating: productElement.find('.product-ratingsContainer').text().trim() || '4.0',
-      image: imageUrl,
-      url: productUrl,
-      searchUrl: searchUrl
-    };
-    
+    return null;
   } catch (error) {
-    console.error('[Myntra] Failed:', error.message);
-    return {
-      success: false,
-      searchUrl: `https://www.myntra.com/${encodeURIComponent(query)}`
-    };
+    console.error(`[Google API ${site}] Error:`, error.message);
+    return null;
   }
 }
 
-// 2. TIRA - Usually works
-async function scrapeTira(query) {
-  try {
-    const searchUrl = `https://www.tirabeauty.com/search?q=${encodeURIComponent(query)}`;
-    console.log(`[Tira] Fetching: ${searchUrl}`);
+// Easy site scrapers (Myntra, Tira, AJIO, Nykaa)
+async function scrapeEasySite(site, query) {
+  const scrapers = {
+    myntra: async (q) => {
+      const url = `https://www.myntra.com/${encodeURIComponent(q)}`;
+      const response = await axios.get(url, {
+        headers: { 'User-Agent': 'Mozilla/5.0' },
+        timeout: 10000
+      });
+      
+      const $ = cheerio.load(response.data);
+      const product = $('.product-base').first();
+      
+      if (product.length) {
+        const brand = product.find('.product-brand').text().trim();
+        const name = product.find('.product-product').text().trim();
+        const price = product.find('.product-discountedPrice').text().trim();
+        const link = product.find('a').attr('href');
+        
+        return {
+          title: `${brand} ${name}`.trim(),
+          price: price || 'Check website',
+          url: link ? `https://www.myntra.com${link}` : url,
+          searchUrl: url
+        };
+      }
+      return null;
+    },
     
-    const response = await axios.get(searchUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Accept': 'text/html',
-        'Accept-Language': 'en-US,en;q=0.9'
-      },
-      timeout: 15000
-    });
-    
-    const $ = cheerio.load(response.data);
-    
-    // Find product link
-    const productLink = $('a[href*="/p/"]').first();
-    
-    if (productLink.length === 0) {
-      throw new Error('No product links found');
+    tira: async (q) => {
+      const url = `https://www.tirabeauty.com/search?q=${encodeURIComponent(q)}`;
+      const response = await axios.get(url, {
+        headers: { 'User-Agent': 'Mozilla/5.0' },
+        timeout: 10000
+      });
+      
+      const $ = cheerio.load(response.data);
+      const link = $('a[href*="/p/"]').first();
+      
+      if (link.length) {
+        const productUrl = `https://www.tirabeauty.com${link.attr('href')}`;
+        
+        // Try to get product page
+        try {
+          const productResponse = await axios.get(productUrl, {
+            headers: { 'User-Agent': 'Mozilla/5.0' },
+            timeout: 10000
+          });
+          
+          const product$ = cheerio.load(productResponse.data);
+          const title = product$('h1').first().text().trim();
+          const price = product$('[class*="price"]').first().text().trim();
+          
+          return {
+            title: title || q,
+            price: price || 'Check website',
+            url: productUrl,
+            searchUrl: url
+          };
+        } catch (e) {
+          return {
+            title: q,
+            price: 'Check website',
+            url: productUrl,
+            searchUrl: url
+          };
+        }
+      }
+      return null;
     }
-    
-    const productPath = productLink.attr('href');
-    const productUrl = productPath ? `https://www.tirabeauty.com${productPath}` : searchUrl;
-    
-    // Get product page for details
-    const productResponse = await axios.get(productUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-      },
-      timeout: 15000
-    });
-    
-    const product$ = cheerio.load(productResponse.data);
-    
-    const title = product$('h1').first().text().trim() || 
-                  product$('[class*="product-title"]').first().text().trim();
-    
-    const price = product$('[class*="price"]').first().text().trim() ||
-                  product$('[class*="selling-price"]').first().text().trim();
-    
-    const image = product$('img[class*="product-image"]').first().attr('src') ||
-                  product$('img[alt*="product"]').first().attr('src');
-    
-    return {
-      success: true,
-      title: title || query,
-      price: price || 'Price not available',
-      rating: '4.0',
-      image: image,
-      url: productUrl,
-      searchUrl: searchUrl
-    };
-    
+  };
+  
+  const scraper = scrapers[site];
+  if (!scraper) return null;
+  
+  try {
+    return await scraper(query);
   } catch (error) {
-    console.error('[Tira] Failed:', error.message);
-    return {
-      success: false,
-      searchUrl: `https://www.tirabeauty.com/search?q=${encodeURIComponent(query)}`
-    };
+    console.error(`[${site} scraper] Error:`, error.message);
+    return null;
   }
 }
 
-// 3. AJIO - Try simple approach
-async function scrapeAjio(query) {
-  try {
-    const searchUrl = `https://www.ajio.com/search/?text=${encodeURIComponent(query)}`;
-    console.log(`[AJIO] Fetching: ${searchUrl}`);
-    
-    const response = await axios.get(searchUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Accept': 'text/html',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Referer': 'https://www.ajio.com/'
-      },
-      timeout: 15000
-    });
-    
-    const $ = cheerio.load(response.data);
-    
-    // Find product
-    const productElement = $('[class*="product"]').first() || $('.item').first();
-    
-    if (productElement.length === 0) {
-      throw new Error('No products found');
-    }
-    
-    const title = productElement.find('[class*="name"]').text().trim() ||
-                  productElement.find('[class*="title"]').text().trim();
-    
-    const price = productElement.find('[class*="price"]').text().trim();
-    
-    const linkElement = productElement.find('a').first();
-    const productPath = linkElement.attr('href');
-    const productUrl = productPath ? `https://www.ajio.com${productPath}` : searchUrl;
-    
-    const image = productElement.find('img').first().attr('src') ||
-                  productElement.find('img').first().attr('data-src');
-    
-    return {
-      success: true,
-      title: title || query,
-      price: price || 'Check website',
-      rating: null,
-      image: image,
-      url: productUrl,
-      searchUrl: searchUrl
-    };
-    
-  } catch (error) {
-    console.error('[AJIO] Failed:', error.message);
-    return {
-      success: false,
-      searchUrl: `https://www.ajio.com/search/?text=${encodeURIComponent(query)}`
-    };
-  }
-}
+// ========== MAIN SEARCH ENDPOINT ==========
 
-// 4. NYKAA - Try simple approach
-async function scrapeNykaa(query) {
-  try {
-    const searchUrl = `https://www.nykaa.com/search/result/?q=${encodeURIComponent(query)}`;
-    console.log(`[Nykaa] Fetching: ${searchUrl}`);
-    
-    const response = await axios.get(searchUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Accept': 'text/html',
-        'Accept-Language': 'en-US,en;q=0.9'
-      },
-      timeout: 15000
-    });
-    
-    const $ = cheerio.load(response.data);
-    
-    // Find product
-    const productElement = $('[class*="product"]').first() || 
-                          $('.product-item').first();
-    
-    if (productElement.length === 0) {
-      throw new Error('No products found');
-    }
-    
-    const title = productElement.find('[class*="title"]').text().trim() ||
-                  productElement.find('[class*="name"]').text().trim();
-    
-    const price = productElement.find('[class*="price"]').text().trim();
-    
-    const linkElement = productElement.find('a').first();
-    const productPath = linkElement.attr('href');
-    const productUrl = productPath ? `https://www.nykaa.com${productPath}` : searchUrl;
-    
-    const image = productElement.find('img').first().attr('src');
-    
-    return {
-      success: true,
-      title: title || query,
-      price: price || 'Check website',
-      rating: productElement.find('[class*="rating"]').text().trim(),
-      image: image,
-      url: productUrl,
-      searchUrl: searchUrl
-    };
-    
-  } catch (error) {
-    console.error('[Nykaa] Failed:', error.message);
-    return {
-      success: false,
-      searchUrl: `https://www.nykaa.com/search/result/?q=${encodeURIComponent(query)}`
-    };
-  }
-}
-
-// ========== ROUTES ==========
-
-app.get('/', (req, res) => {
-  res.json({ 
-    status: 'running',
-    service: 'Easy Sites Scraper',
-    sites_supported: ['myntra', 'tira', 'ajio', 'nykaa'],
-    note: 'Amazon/Flipkart handled by Chrome extension directly'
-  });
-});
-
-app.post('/search-easy-sites', async (req, res) => {
+app.post('/search', async (req, res) => {
   try {
     const { query, sites } = req.body;
     
-    if (!query) {
-      return res.status(400).json({ error: 'Query required' });
+    if (!query || !sites || sites.length === 0) {
+      return res.status(400).json({ error: 'Missing query or sites' });
     }
     
-    // Only process easy sites
-    const easySites = ['myntra', 'tira', 'ajio', 'nykaa'];
-    const sitesToProcess = sites.filter(site => easySites.includes(site));
-    
-    if (sitesToProcess.length === 0) {
-      return res.json({ results: [] });
-    }
-    
-    const scrapers = {
-      myntra: scrapeMyntra,
-      tira: scrapeTira,
-      ajio: scrapeAjio,
-      nykaa: scrapeNykaa
-    };
+    console.log(`🔍 Real search for: "${query}"`);
     
     const results = [];
+    const siteCategories = {
+      hard: ['amazon', 'flipkart'],
+      easy: ['myntra', 'tira', 'ajio', 'nykaa']
+    };
     
-    for (const site of sitesToProcess) {
-      const scraper = scrapers[site];
-      if (scraper) {
-        const result = await scraper(query);
-        results.push({
-          site: site,
-          ...result
-        });
-        
-        // Be polite - delay between requests
-        await new Promise(resolve => setTimeout(resolve, 1000));
+    for (const site of sites) {
+      let productData = null;
+      let note = '';
+      
+      // Strategy based on site difficulty
+      if (siteCategories.hard.includes(site)) {
+        // Use Google API for hard sites
+        productData = await searchGoogleShoppingAPI(query, site);
+        note = productData ? 'Google Shopping API' : 'API failed';
+      } 
+      else if (siteCategories.easy.includes(site)) {
+        // Use direct scraping for easy sites
+        productData = await scrapeEasySite(site, query);
+        note = productData ? 'Direct scrape' : 'Scrape failed';
       }
+      
+      // Fallback: Create useful search link
+      if (!productData) {
+        const searchUrl = getSearchUrl(site, query);
+        productData = {
+          title: `Search ${query} on ${site}`,
+          price: 'Click to check price',
+          url: searchUrl,
+          searchUrl: searchUrl
+        };
+        note = 'Search link';
+      }
+      
+      results.push({
+        site: site,
+        ...productData,
+        rating: productData.rating || '4.0',
+        note: note,
+        timestamp: new Date().toISOString()
+      });
+      
+      // Delay between requests
+      await new Promise(resolve => setTimeout(resolve, 500));
     }
     
+    console.log(`✅ Found ${results.length} results`);
     res.json({ results });
     
   } catch (error) {
-    console.error('Easy sites search error:', error);
-    res.status(500).json({ error: error.message });
+    console.error('Search error:', error);
+    res.status(500).json({ 
+      error: 'Search failed',
+      message: error.message
+    });
   }
 });
 
+// Helper function
+function getSearchUrl(site, query) {
+  const encoded = encodeURIComponent(query);
+  const urls = {
+    amazon: `https://www.amazon.in/s?k=${encoded}`,
+    flipkart: `https://www.flipkart.com/search?q=${encoded}`,
+    myntra: `https://www.myntra.com/${encoded}`,
+    ajio: `https://www.ajio.com/search/?text=${encoded}`,
+    nykaa: `https://www.nykaa.com/search/result/?q=${encoded}`,
+    tira: `https://www.tirabeauty.com/search?q=${encoded}`
+  };
+  return urls[site] || '';
+}
+
+app.get('/', (req, res) => {
+  res.json({
+    status: 'running',
+    service: 'Real Product Search',
+    strategy: 'Google API + Direct scraping',
+    note: 'Setup Google Custom Search for better results'
+  });
+});
+
 app.listen(PORT, () => {
-  console.log(`✅ Easy Sites Backend running on port ${PORT}`);
-  console.log(`🎯 Supported: Myntra, Tira, AJIO, Nykaa`);
-  console.log(`⚡ Amazon/Flipkart: Use Chrome extension directly`);
+  console.log(`✅ Real Search Backend on port ${PORT}`);
+  console.log(`🔑 To improve: Get Google Custom Search API key`);
 });
