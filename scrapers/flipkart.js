@@ -26,7 +26,10 @@ async function scrapeFlipkart(query) {
     
     const $ = cheerio.load(response.data);
     
-    let product = null;
+    // STRATEGY: Find product that matches query, not just first one
+    const allProducts = $('[data-id]');
+    
+    let matchedProduct = null;
     let title = null;
     let price = null;
     let size = null;
@@ -34,41 +37,67 @@ async function scrapeFlipkart(query) {
     let link = null;
     let rating = null;
     
-    // Find product with data-id
-    product = $('[data-id]').first();
+    // Extract key search terms from query
+    const searchTerms = query.toLowerCase().split(/\s+/).filter(t => t.length > 3);
     
-    if (product.length) {
-      // Get title
-      title = product.find('a.wjcEIp').text().trim() ||
-              product.find('a.WKTcLC').text().trim() ||
-              product.find('a.IRlnr').text().trim() ||
-              product.find('a.s1Q9rs').text().trim() ||
-              product.find('div.KzDlHZ').text().trim() ||
-              product.find('a[title]').attr('title');
+    // Try to find product that matches search terms
+    allProducts.each((i, elem) => {
+      const product = $(elem);
       
-      // CRITICAL FIX: Get price - take ONLY FIRST match
-      // Try known price classes first
-      const priceElement = product.find('div.Nx9bqj, div._30jeq3, div.hl05eU, div._1_WHN1').first();
+      // Get title from this product
+      const productTitle = product.find('a.wjcEIp').text().trim() ||
+                          product.find('a.WKTcLC').text().trim() ||
+                          product.find('a.IRlnr').text().trim() ||
+                          product.find('a[title]').attr('title') ||
+                          product.find('.KzDlHZ').text().trim();
+      
+      if (!productTitle) return; // Skip if no title
+      
+      const titleLower = productTitle.toLowerCase();
+      
+      // Check if title contains at least 2 search terms
+      let matchCount = 0;
+      for (const term of searchTerms) {
+        if (titleLower.includes(term)) {
+          matchCount++;
+        }
+      }
+      
+      // If good match found (at least 2 terms), use this product
+      if (matchCount >= 2 && !matchedProduct) {
+        matchedProduct = product;
+        title = productTitle;
+        return false; // Stop searching
+      }
+      
+      // Store first product as fallback
+      if (i === 0) {
+        matchedProduct = product;
+        title = productTitle;
+      }
+    });
+    
+    if (matchedProduct && title) {
+      // Get price from matched product
+      const priceElement = matchedProduct.find('div.Nx9bqj, div._30jeq3, div.hl05eU, div._1_WHN1').first();
       
       if (priceElement.length) {
         price = priceElement.text().trim();
       }
       
-      // If still no price, search for first element with ₹
+      // Fallback: search for ₹ in this specific product
       if (!price) {
-        product.find('div, span').each((i, elem) => {
+        matchedProduct.find('div, span').each((i, elem) => {
           const text = $(elem).text().trim();
-          // Must have ₹, be short (< 15 chars), and not already found
           if (!price && text.includes('₹') && text.length < 15 && !text.includes('%')) {
             price = text;
-            return false; // Stop at FIRST match
+            return false;
           }
         });
       }
       
-      // Clean price - remove any trailing text after second ₹ symbol
+      // Clean price - take only first ₹ amount
       if (price && price.split('₹').length > 2) {
-        // Has multiple prices, take first one
         const firstPrice = price.match(/₹[0-9,]+/);
         if (firstPrice) {
           price = firstPrice[0];
@@ -76,55 +105,20 @@ async function scrapeFlipkart(query) {
       }
       
       // Extract size from title
-      if (title) {
-        const sizeMatch = title.match(/\(([0-9]+\s?(ml|g|kg|l|oz|gm|GM|ML|L|Pack))\)/i) ||
-                          title.match(/([0-9]+\s?(ml|g|kg|l|oz|gm|GM|ML|L|Pack))/i);
-        if (sizeMatch) {
-          size = sizeMatch[1] || sizeMatch[0];
-        }
+      const sizeMatch = title.match(/\(([0-9]+\s?(ml|g|kg|l|oz|gm|GM|ML|L|Pack))\)/i) ||
+                        title.match(/([0-9]+\s?(ml|g|kg|l|oz|gm|GM|ML|L|Pack))/i);
+      if (sizeMatch) {
+        size = sizeMatch[1] || sizeMatch[0];
       }
       
-      image = product.find('img').first().attr('src');
-      link = product.find('a').first().attr('href');
-      rating = product.find('div.XQDdHH, div.Rsc7Yb, span[class*="rating"]').first().text().trim();
-    }
-    
-    // Try old layout if nothing found
-    if (!title || !price) {
-      product = $('.tUxRFH, ._1AtVbE, ._13oc-S').first();
+      image = matchedProduct.find('img').first().attr('src');
+      link = matchedProduct.find('a').first().attr('href');
+      rating = matchedProduct.find('div.XQDdHH, div.Rsc7Yb').first().text().trim();
       
-      if (product.length) {
-        if (!title) {
-          title = product.find('._4rR01T, .IRlnr, .s1Q9rs, .wjcEIp').text().trim() ||
-                  product.find('a').attr('title');
-        }
-        
-        if (!price) {
-          const priceElem = product.find('._30jeq3, ._1_WHN1, .Nx9bqj').first();
-          if (priceElem.length) {
-            price = priceElem.text().trim();
-          }
-        }
-        
-        if (!size && title) {
-          const sizeMatch = title.match(/\(([0-9]+\s?(ml|g|kg|l|oz))\)/i) ||
-                            title.match(/([0-9]+\s?(ml|g|kg|l|oz))/i);
-          if (sizeMatch) {
-            size = sizeMatch[1] || sizeMatch[0];
-          }
-        }
-        
-        if (!image) image = product.find('img').attr('src');
-        if (!link) link = product.find('a').attr('href');
-        if (!rating) rating = product.find('.XQDdHH, ._3LWZlK').text().trim();
-      }
-    }
-    
-    if (title) {
       const productUrl = link ? `https://www.flipkart.com${link}` : searchUrl;
       
       return {
-        title: title || query,
+        title: title,
         size: size || null,
         price: price || 'Check website',
         rating: rating || null,
