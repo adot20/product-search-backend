@@ -25,15 +25,18 @@ app.options('*', cors());
 
 app.use(express.json());
 
-// Map site names to scraper functions
+// Map site names to scraper functions (keys must be lowercase)
 const scrapers = {
   amazon: scrapeAmazon,
   flipkart: scrapeFlipkart,
   myntra: scrapeMyntra,
   ajio: scrapeAjio,
   nykaa: scrapeNykaa,
-  tira: scrapeTira
+  tira: typeof scrapeTira === 'function' ? scrapeTira : undefined
 };
+if (!scrapers.tira) {
+  console.warn('⚠️  Tira scraper not loaded - ensure scrapers/tira.js exports scrapeTira (redeploy if you fixed it).');
+}
 
 // Helper function to generate search URLs
 function getSearchUrl(site, query) {
@@ -66,17 +69,18 @@ app.post('/search', async (req, res) => {
     
     const results = [];
     
-    // Search each site
+    // Search each site (normalize key: extension may send "tira" or "Tira")
     for (const site of sites) {
-      const scraper = scrapers[site];
+      const siteKey = typeof site === 'string' ? site.toLowerCase() : site;
+      const scraper = scrapers[siteKey];
       
       if (!scraper) {
         console.log(`⚠️  No scraper for: ${site}`);
         results.push({
-          site: site,
+          site: siteKey,
           error: true,
           message: 'Site not supported',
-          searchUrl: getSearchUrl(site, query)
+          searchUrl: getSearchUrl(siteKey, query)
         });
         continue;
       }
@@ -90,16 +94,16 @@ app.post('/search', async (req, res) => {
 
         if (productData) {
           results.push({
-            site: site,
+            site: siteKey,
               ...productData
           });
           console.log(`  ✓ ${site}: Found product - ${productData.title}`);
       } else {
           // No product found, return search link
-          const searchUrl = getSearchUrl(site, query);
+          const searchUrl = getSearchUrl(siteKey, query);
           results.push({
-            site: site,
-            title: `Search "${query}" on ${site}`,
+            site: siteKey,
+            title: `Search "${query}" on ${siteKey}`,
             price: 'Click to search',
             url: searchUrl,
             searchUrl: searchUrl,
@@ -111,15 +115,15 @@ app.post('/search', async (req, res) => {
       } catch (error) {
         console.error(`  ✗ ${site}: Error -`, error.message);
         results.push({
-          site: site,
+          site: siteKey,
           error: true,
           message: 'Failed to fetch data',
-          searchUrl: getSearchUrl(site, query)
+          searchUrl: getSearchUrl(siteKey, query)
         });
       }
       
-      // Small delay between requests to be respectful
-      await new Promise(resolve => setTimeout(resolve, 300));
+      // Small delay between requests to be respectful and avoid rate limiting
+      await new Promise(resolve => setTimeout(resolve, Math.random() * 500 + 500));
     }
     
     console.log(`✅ Completed search with ${results.length} results`);
