@@ -50,14 +50,13 @@ async function scrapeAmazon(query) {
     
     const $ = cheerio.load(response.data);
     
-    const queryNorm = query.trim().toLowerCase();
+    const queryNorm = query.trim().toLowerCase().replace(/\s+/g, ' ');
     
     // Helper: treat title as invalid if it's just the search query (Amazon sometimes echoes it)
     function isInvalidTitle(t) {
       if (!t || t.length < 10) return true;
-      const tNorm = t.trim().toLowerCase();
+      const tNorm = (t.trim().toLowerCase()).replace(/\s+/g, ' ');
       if (tNorm === queryNorm) return true;
-      // Same words in same order (query is substring of title is ok)
       const queryWords = queryNorm.split(/\s+/).filter(Boolean);
       if (queryWords.length >= 2 && tNorm === queryWords.join(' ')) return true;
       return false;
@@ -75,7 +74,7 @@ async function scrapeAmazon(query) {
     let firstProduct = null;
     let title = null;
     
-    for (let i = 0; i < Math.min(productList.length, 10); i++) {
+    for (let i = 0; i < Math.min(productList.length, 20); i++) {
       const product = productList.eq(i);
       // Prefer full h2 text (actual product title is usually the longest / full line)
       let t = product.find('h2').text().trim();
