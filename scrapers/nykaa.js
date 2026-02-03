@@ -23,12 +23,12 @@ async function scrapeNykaa(query) {
         'Sec-Ch-Ua-Mobile': '?0',
         'Sec-Ch-Ua-Platform': '"Windows"',
         'Cache-Control': 'max-age=0',
-        'Cookie': 'lang=en' // Basic cookie to look more legitimate
+        'Cookie': 'lang=en'
       },
       timeout: 20000,
       maxRedirects: 5,
       validateStatus: function (status) {
-        return status < 500; // Accept 403 to see what's blocking us
+        return status < 500;
       }
     });
     
@@ -39,11 +39,9 @@ async function scrapeNykaa(query) {
     
     const $ = cheerio.load(response.data);
     
-    // Nykaa has multiple layouts and uses dynamic class names
-    // Try comprehensive selector strategy
-    
     let product = null;
     let title = null;
+    let size = null;
     let price = null;
     let image = null;
     let link = null;
@@ -53,12 +51,10 @@ async function scrapeNykaa(query) {
     product = $('.productCard, .product-item, [class*="css-"][class*="product"]').first();
     
     if (!product.length) {
-      // Strategy 2: Look for any div with product data attributes
       product = $('[data-product-id], [data-id*="product"]').first();
     }
     
     if (!product.length) {
-      // Strategy 3: Look in common container classes
       product = $('.css-13gj7qq, .css-xrzmfa, .product-listing-item').first();
     }
     
@@ -68,12 +64,25 @@ async function scrapeNykaa(query) {
       if (!title) title = product.find('h2, h3, h4').first().text().trim();
       if (!title) title = product.find('a').first().attr('title');
       
+      // Extract size from title
+      if (title) {
+        const sizeMatch = title.match(/\(([0-9]+\s?(ml|g|kg|l|oz|gm|GM|ML|L|Pack))\)/i) ||
+                          title.match(/([0-9]+\s?(ml|g|kg|l|oz|gm|GM|ML|L|Pack))/i) ||
+                          title.match(/([0-9]+\s?x\s?[0-9]+\s?(ml|g))/i);
+        if (sizeMatch) {
+          size = sizeMatch[1] || sizeMatch[0];
+        }
+      }
+      
       // Try multiple price selectors
-      price = product.find('.product-price, .css-111z9ua, [class*="price"]').first().text().trim();
-      if (!price) price = product.find('.css-4u561g, [class*="discounted"]').first().text().trim();
+      price = product.find('.product-price, .css-111z9ua, span[class*="price"], .css-4u561g').first().text().trim();
+      
+      if (!price) {
+        price = product.find('[class*="discountedPrice"], [class*="sellingPrice"]').first().text().trim();
+      }
       
       // Rating
-      rating = product.find('.rating, [class*="rating"]').first().text().trim();
+      rating = product.find('.rating, [class*="rating"], .css-ep3g5d').first().text().trim();
       
       // Image
       image = product.find('img').first().attr('src');
@@ -88,6 +97,7 @@ async function scrapeNykaa(query) {
         
         return {
           title: title || query,
+          size: size || null,
           price: price || 'Check website',
           rating: rating || '4.0',
           image: image || null,
@@ -97,7 +107,7 @@ async function scrapeNykaa(query) {
       }
     }
     
-    // Check if we got blocked (Nykaa shows captcha/block page)
+    // Check if we got blocked
     const bodyText = $('body').text().toLowerCase();
     if (bodyText.includes('captcha') || bodyText.includes('robot') || bodyText.includes('unusual activity')) {
       console.log('[Nykaa] Detected captcha/block page');
