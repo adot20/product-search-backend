@@ -97,7 +97,8 @@ async function scrapeNykaa(query) {
                 const product = products[0];
                 let title = product.productName || product.name || product.title || 
                              (product.brandName && product.productName ? `${product.brandName} ${product.productName}` : null);
-                if (title && title.trim().toLowerCase() === query.trim().toLowerCase()) {
+                const qn = (query || '').trim().toLowerCase().replace(/\s+/g, ' ');
+                if (title && (title.trim().toLowerCase().replace(/\s+/g, ' ') === qn)) {
                   title = null;
                 }
                 if (title) {
@@ -213,8 +214,8 @@ async function scrapeNykaa(query) {
       let link = product.find('a').first().attr('href');
       
       // Never use search query as product title (page sometimes echoes it)
-      const queryNorm = query.trim().toLowerCase();
-      const titleNorm = (title || '').trim().toLowerCase();
+      const queryNorm = (query || '').trim().toLowerCase().replace(/\s+/g, ' ');
+      const titleNorm = (title || '').trim().toLowerCase().replace(/\s+/g, ' ');
       if (titleNorm === queryNorm) {
         title = null;
       }
