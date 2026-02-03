@@ -7,7 +7,19 @@ const { scrapeFlipkart } = require('./scrapers/flipkart');
 const { scrapeMyntra } = require('./scrapers/myntra');
 const { scrapeAjio } = require('./scrapers/ajio');
 const { scrapeNykaa } = require('./scrapers/nykaa');
-const { scrapeTira } = require('./scrapers/tira');
+
+let scrapeTira;
+try {
+  const tiraModule = require('./scrapers/tira');
+  scrapeTira = tiraModule.scrapeTira;
+  if (typeof scrapeTira !== 'function') {
+    console.warn('⚠️  Tira scraper not a function (scrapers/tira.js must export: module.exports = { scrapeTira }; ). Got:', typeof scrapeTira);
+    scrapeTira = undefined;
+  }
+} catch (e) {
+  console.error('⚠️  Tira scraper failed to load:', e.message);
+  scrapeTira = undefined;
+}
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -32,10 +44,10 @@ const scrapers = {
   myntra: scrapeMyntra,
   ajio: scrapeAjio,
   nykaa: scrapeNykaa,
-  tira: typeof scrapeTira === 'function' ? scrapeTira : undefined
+  tira: scrapeTira
 };
 if (!scrapers.tira) {
-  console.warn('⚠️  Tira scraper not loaded - ensure scrapers/tira.js exports scrapeTira (redeploy if you fixed it).');
+  console.warn('⚠️  Tira will show "Site not supported" until scrapers/tira.js is fixed and redeployed.');
 }
 
 // Helper function to generate search URLs
@@ -162,5 +174,6 @@ app.listen(PORT, () => {
   console.log(`✅ Product Search Backend running on port ${PORT}`);
   console.log(`🔓 CORS enabled for Chrome extensions`);
   console.log(`📁 Using modular scraper architecture`);
-  console.log(`🔍 Ready to scrape: ${Object.keys(scrapers).join(', ')}`);
+  const loaded = Object.keys(scrapers).map(s => scrapers[s] ? `${s} ✓` : `${s} ✗`).join(', ');
+  console.log(`🔍 Scrapers: ${loaded}`);
 });
