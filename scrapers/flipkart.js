@@ -34,11 +34,11 @@ async function scrapeFlipkart(query) {
     let link = null;
     let rating = null;
     
-    // Strategy 1: Find product with data-id
+    // Find product with data-id
     product = $('[data-id]').first();
     
     if (product.length) {
-      // Get title (multiple strategies)
+      // Get title
       title = product.find('a.wjcEIp').text().trim() ||
               product.find('a.WKTcLC').text().trim() ||
               product.find('a.IRlnr').text().trim() ||
@@ -46,72 +46,69 @@ async function scrapeFlipkart(query) {
               product.find('div.KzDlHZ').text().trim() ||
               product.find('a[title]').attr('title');
       
-      // AGGRESSIVE PRICE SEARCH - Look for ANY div containing ₹
-      // First try known classes
-      price = product.find('div.Nx9bqj').text().trim() ||
-              product.find('div._30jeq3').text().trim() ||
-              product.find('div.hl05eU').text().trim() ||
-              product.find('div._1_WHN1').text().trim();
+      // CRITICAL FIX: Get price - take ONLY FIRST match
+      // Try known price classes first
+      const priceElement = product.find('div.Nx9bqj, div._30jeq3, div.hl05eU, div._1_WHN1').first();
       
-      // If still no price, search for any element with ₹ symbol
+      if (priceElement.length) {
+        price = priceElement.text().trim();
+      }
+      
+      // If still no price, search for first element with ₹
       if (!price) {
         product.find('div, span').each((i, elem) => {
           const text = $(elem).text().trim();
-          if (text.includes('₹') && text.length < 20) { // Price should be short
+          // Must have ₹, be short (< 15 chars), and not already found
+          if (!price && text.includes('₹') && text.length < 15 && !text.includes('%')) {
             price = text;
-            return false; // break loop
+            return false; // Stop at FIRST match
           }
         });
       }
       
-      // Extract size from title if present
-      const sizeMatch = title.match(/\(([0-9]+\s?(ml|g|kg|l|oz|gm|GM|ML|L))\)/i) ||
-                        title.match(/([0-9]+\s?(ml|g|kg|l|oz|gm|GM|ML|L))/i);
-      if (sizeMatch) {
-        size = sizeMatch[1] || sizeMatch[0];
+      // Clean price - remove any trailing text after second ₹ symbol
+      if (price && price.split('₹').length > 2) {
+        // Has multiple prices, take first one
+        const firstPrice = price.match(/₹[0-9,]+/);
+        if (firstPrice) {
+          price = firstPrice[0];
+        }
       }
       
-      // Get image
+      // Extract size from title
+      if (title) {
+        const sizeMatch = title.match(/\(([0-9]+\s?(ml|g|kg|l|oz|gm|GM|ML|L|Pack))\)/i) ||
+                          title.match(/([0-9]+\s?(ml|g|kg|l|oz|gm|GM|ML|L|Pack))/i);
+        if (sizeMatch) {
+          size = sizeMatch[1] || sizeMatch[0];
+        }
+      }
+      
       image = product.find('img').first().attr('src');
-      
-      // Get link
       link = product.find('a').first().attr('href');
-      
-      // Get rating
-      rating = product.find('div.XQDdHH').text().trim() ||
-               product.find('div.Rsc7Yb').text().trim() ||
-               product.find('span[class*="rating"]').text().trim();
+      rating = product.find('div.XQDdHH, div.Rsc7Yb, span[class*="rating"]').first().text().trim();
     }
     
-    // Strategy 2: Try old layout
+    // Try old layout if nothing found
     if (!title || !price) {
-      product = $('.tUxRFH, ._1AtVbE, ._13oc-S, .CGtC98, ._2kHMtA').first();
+      product = $('.tUxRFH, ._1AtVbE, ._13oc-S').first();
       
       if (product.length) {
         if (!title) {
           title = product.find('._4rR01T, .IRlnr, .s1Q9rs, .wjcEIp').text().trim() ||
-                  product.find('a').attr('title') ||
-                  product.find('a').text().trim();
+                  product.find('a').attr('title');
         }
         
         if (!price) {
-          price = product.find('._30jeq3, ._1_WHN1, .Nx9bqj, .hl05eU').text().trim();
-          
-          // Aggressive search in this container too
-          if (!price) {
-            product.find('div, span').each((i, elem) => {
-              const text = $(elem).text().trim();
-              if (text.includes('₹') && text.length < 20) {
-                price = text;
-                return false;
-              }
-            });
+          const priceElem = product.find('._30jeq3, ._1_WHN1, .Nx9bqj').first();
+          if (priceElem.length) {
+            price = priceElem.text().trim();
           }
         }
         
-        if (!size) {
-          const sizeMatch = title.match(/\(([0-9]+\s?(ml|g|kg|l|oz|gm|GM|ML|L))\)/i) ||
-                            title.match(/([0-9]+\s?(ml|g|kg|l|oz|gm|GM|ML|L))/i);
+        if (!size && title) {
+          const sizeMatch = title.match(/\(([0-9]+\s?(ml|g|kg|l|oz))\)/i) ||
+                            title.match(/([0-9]+\s?(ml|g|kg|l|oz))/i);
           if (sizeMatch) {
             size = sizeMatch[1] || sizeMatch[0];
           }
@@ -119,11 +116,10 @@ async function scrapeFlipkart(query) {
         
         if (!image) image = product.find('img').attr('src');
         if (!link) link = product.find('a').attr('href');
-        if (!rating) rating = product.find('.XQDdHH, ._3LWZlK, .Rsc7Yb').text().trim();
+        if (!rating) rating = product.find('.XQDdHH, ._3LWZlK').text().trim();
       }
     }
     
-    // If we found something
     if (title) {
       const productUrl = link ? `https://www.flipkart.com${link}` : searchUrl;
       
