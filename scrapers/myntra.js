@@ -40,7 +40,7 @@ async function scrapeMyntra(query) {
         'Cache-Control': 'max-age=0',
         'DNT': '1'
       },
-      timeout: 25000,
+      timeout: 32000,
       validateStatus: function (status) {
         return status < 500;
       }
