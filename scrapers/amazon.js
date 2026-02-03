@@ -23,6 +23,15 @@ async function scrapeAmazon(query) {
       // Get title
       const title = firstProduct.find('h2 a span').first().text().trim();
       
+      // Extract size from title
+      let size = null;
+      const sizeMatch = title.match(/\(([0-9]+\s?(ml|g|kg|l|oz|gm|GM|ML|L|Pack))\)/i) ||
+                        title.match(/([0-9]+\s?(ml|g|kg|l|oz|gm|GM|ML|L|Pack))/i) ||
+                        title.match(/([0-9]+\s?x\s?[0-9]+\s?(ml|g))/i); // e.g., "3 x 100ml"
+      if (sizeMatch) {
+        size = sizeMatch[1] || sizeMatch[0];
+      }
+      
       // Get price - Amazon format: "353." in whole, "92" in fraction
       let priceWhole = firstProduct.find('.a-price-whole').first().text().trim();
       let priceFraction = firstProduct.find('.a-price-fraction').first().text().trim();
@@ -52,6 +61,7 @@ async function scrapeAmazon(query) {
       
       return {
         title: title || query,
+        size: size || null,
         price: price || 'Check website',
         rating: rating || null,
         image: image || null,
