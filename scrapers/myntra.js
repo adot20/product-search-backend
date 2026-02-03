@@ -1,57 +1,27 @@
 const axios = require('axios');
 
 async function scrapeMyntra(query) {
-  // Myntra has an API endpoint we can hit directly!
-  const searchUrl = `https://www.myntra.com/gateway/v2/search/${encodeURIComponent(query)}`;
+  // Skip API (returns 401), go straight to HTML scraping
+  const cheerio = require('cheerio');
+  const htmlUrl = `https://www.myntra.com/${encodeURIComponent(query)}`;
   
   try {
-    // Try API first (more reliable)
-    try {
-      const apiResponse = await axios.get(searchUrl, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept': 'application/json',
-          'Accept-Language': 'en-US,en;q=0.9',
-          'Referer': 'https://www.myntra.com/',
-          'Origin': 'https://www.myntra.com',
-          'Sec-Fetch-Dest': 'empty',
-          'Sec-Fetch-Mode': 'cors',
-          'Sec-Fetch-Site': 'same-origin'
-        },
-        timeout: 15000
-      });
-      
-      if (apiResponse.data && apiResponse.data.products && apiResponse.data.products.length > 0) {
-        const product = apiResponse.data.products[0];
-        
-        return {
-          title: `${product.brand} ${product.product}`.trim(),
-          price: product.price ? `₹${product.price}` : product.discountedPrice ? `₹${product.discountedPrice}` : 'Check website',
-          rating: product.rating ? product.rating.toString() : '4.0',
-          image: product.searchImage || product.images?.[0]?.src || null,
-          url: `https://www.myntra.com/${product.landingPageUrl || product.productId}`,
-          searchUrl: `https://www.myntra.com/${encodeURIComponent(query)}`
-        };
-      }
-    } catch (apiError) {
-      console.log('[Myntra] API failed, trying HTML scrape:', apiError.message);
-    }
-    
-    // Fallback to HTML scraping if API fails
-    const cheerio = require('cheerio');
-    const htmlUrl = `https://www.myntra.com/${encodeURIComponent(query)}`;
-    
     const response = await axios.get(htmlUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
         'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'gzip, deflate, br',
         'Referer': 'https://www.google.com/',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
         'Sec-Fetch-Dest': 'document',
         'Sec-Fetch-Mode': 'navigate',
-        'Sec-Fetch-Site': 'cross-site'
+        'Sec-Fetch-Site': 'cross-site',
+        'Sec-Fetch-User': '?1',
+        'Cache-Control': 'max-age=0'
       },
-      timeout: 15000
+      timeout: 20000 // Increased to 20 seconds
     });
     
     const $ = cheerio.load(response.data);
@@ -60,22 +30,25 @@ async function scrapeMyntra(query) {
     const scripts = $('script').toArray();
     for (const script of scripts) {
       const content = $(script).html();
-      if (content && content.includes('searchData') || content.includes('pdpData')) {
+      if (content && (content.includes('searchData') || content.includes('pdpData'))) {
         try {
           // Extract JSON from window.__myx = {...}
           const match = content.match(/window\.__myx\s*=\s*({.+?});/s);
           if (match) {
             const data = JSON.parse(match[1]);
             if (data.searchData && data.searchData.results && data.searchData.results.products) {
-              const product = data.searchData.results.products[0];
-              return {
-                title: `${product.brand} ${product.product}`.trim(),
-                price: product.price ? `₹${product.price}` : 'Check website',
-                rating: '4.0',
-                image: product.searchImage || null,
-                url: `https://www.myntra.com/${product.landingPageUrl}`,
-                searchUrl: htmlUrl
-              };
+              const products = data.searchData.results.products;
+              if (products.length > 0) {
+                const product = products[0];
+                return {
+                  title: `${product.brand} ${product.product}`.trim(),
+                  price: product.price ? `₹${product.price}` : product.discountedPrice ? `₹${product.discountedPrice}` : 'Check website',
+                  rating: product.rating ? product.rating.toString() : '4.0',
+                  image: product.searchImage || product.images?.[0]?.src || null,
+                  url: `https://www.myntra.com/${product.landingPageUrl || product.productId}`,
+                  searchUrl: htmlUrl
+                };
+              }
             }
           }
         } catch (e) {
@@ -84,7 +57,7 @@ async function scrapeMyntra(query) {
       }
     }
     
-    // Last resort: HTML scraping
+    // Fallback: HTML scraping
     const product = $('.product-base, .product-productMetaInfo, li[class*="product-"]').first();
     if (product.length) {
       const brand = product.find('.product-brand, h3[class*="brand"], .brand-name').text().trim();
