@@ -95,9 +95,11 @@ async function scrapeNykaa(query) {
               
               if (products && products.length > 0) {
                 const product = products[0];
-                const title = product.productName || product.name || product.title || 
+                let title = product.productName || product.name || product.title || 
                              (product.brandName && product.productName ? `${product.brandName} ${product.productName}` : null);
-                
+                if (title && title.trim().toLowerCase() === query.trim().toLowerCase()) {
+                  title = null;
+                }
                 if (title) {
                   const price = product.mrp || product.price || product.finalPrice || product.sellingPrice || null;
                   const image = product.productImage || product.imageUrl || product.image || 
@@ -210,11 +212,16 @@ async function scrapeNykaa(query) {
       // Link
       let link = product.find('a').first().attr('href');
       
+      // Never use search query as product title (page sometimes echoes it)
+      const queryNorm = query.trim().toLowerCase();
+      const titleNorm = (title || '').trim().toLowerCase();
+      if (titleNorm === queryNorm) {
+        title = null;
+      }
       if (title || price) {
         const productUrl = link ? (link.startsWith('http') ? link : `https://www.nykaa.com${link}`) : searchUrl;
-        
         return {
-          title: title || query,
+          title: title || null,
           size: size || null,
           price: price || 'Check website',
           rating: rating || '4.0',
