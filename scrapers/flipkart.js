@@ -120,6 +120,11 @@ async function scrapeFlipkart(query) {
         matchScore += 10;
       }
       
+      // Strongly prefer product whose title contains the full search query (e.g. "gentle cleanser")
+      if (queryLower.length >= 3 && titleLower.includes(queryLower)) {
+        matchScore += 25;
+      }
+      
       // Store first product as fallback
       if (i === 0) {
         fallbackProduct = { product, title: productTitle, score: matchScore };
