@@ -1,8 +1,8 @@
 const axios = require('axios');
 const cheerio = require('cheerio');
 
-async function scrapeTira(query) {
-  const searchUrl = `https://www.tirabeauty.com/search?q=${encodeURIComponent(query)}`;
+async function scrapeAjio(query) {
+  const searchUrl = `https://www.ajio.com/search/?text=${encodeURIComponent(query)}`;
   
   try {
     const response = await axios.get(searchUrl, {
@@ -13,17 +13,18 @@ async function scrapeTira(query) {
     });
     
     const $ = cheerio.load(response.data);
-    const product = $('.product-card, [class*="product"]').first();
+    const product = $('.item').first();
     
     if (product.length) {
-      const title = product.find('[class*="title"], [class*="name"], h3, h4').first().text().trim();
-      const price = product.find('[class*="price"]').first().text().trim();
-      const image = product.find('img').attr('src') || product.find('img').attr('data-src');
+      const brand = product.find('.brand').text().trim();
+      const name = product.find('.name').text().trim();
+      const price = product.find('.price').text().trim();
+      const image = product.find('img').attr('src');
       const link = product.find('a').attr('href');
-      const productUrl = link ? `https://www.tirabeauty.com${link}` : searchUrl;
+      const productUrl = link ? `https://www.ajio.com${link}` : searchUrl;
       
       return {
-        title: title || query,
+        title: `${brand} ${name}`.trim() || query,
         price: price || 'Check website',
         rating: '4.0',
         image: image || null,
@@ -34,9 +35,9 @@ async function scrapeTira(query) {
     
     return null;
   } catch (error) {
-    console.error('[Tira] Error:', error.message);
+    console.error('[AJIO] Error:', error.message);
     return null;
   }
 }
 
-module.exports = { scrapeTira };
+module.exports = { scrapeAjio };
