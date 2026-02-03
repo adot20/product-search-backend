@@ -50,36 +50,51 @@ async function scrapeAmazon(query) {
     
     const $ = cheerio.load(response.data);
     
-    // Try multiple selectors for product container
-    let firstProduct = $('[data-component-type="s-search-result"]').first();
-    if (firstProduct.length === 0) {
-      firstProduct = $('div[data-cel-widget*="search_result"]').first();
-    }
-    if (firstProduct.length === 0) {
-      firstProduct = $('div[class*="s-result-item"]').first();
+    const queryNorm = query.trim().toLowerCase();
+    
+    // Helper: treat title as invalid if it's just the search query (Amazon sometimes echoes it)
+    function isInvalidTitle(t) {
+      if (!t || t.length < 10) return true;
+      const tNorm = t.trim().toLowerCase();
+      if (tNorm === queryNorm) return true;
+      // Same words in same order (query is substring of title is ok)
+      const queryWords = queryNorm.split(/\s+/).filter(Boolean);
+      if (queryWords.length >= 2 && tNorm === queryWords.join(' ')) return true;
+      return false;
     }
     
-    if (firstProduct.length) {
-      // Try multiple title selectors
-      let title = firstProduct.find('h2 a span.a-text-normal').first().text().trim();
-      if (!title) {
-        title = firstProduct.find('h2 a span').first().text().trim();
+    // Try multiple selectors for product container
+    let productList = $('[data-component-type="s-search-result"]');
+    if (productList.length === 0) {
+      productList = $('div[data-cel-widget*="search_result"]');
+    }
+    if (productList.length === 0) {
+      productList = $('div[class*="s-result-item"]');
+    }
+    
+    let firstProduct = null;
+    let title = null;
+    
+    for (let i = 0; i < Math.min(productList.length, 10); i++) {
+      const product = productList.eq(i);
+      // Prefer full h2 text (actual product title is usually the longest / full line)
+      let t = product.find('h2').text().trim();
+      if (!t) {
+        t = product.find('h2 a span.a-text-normal').first().text().trim();
       }
-      if (!title) {
-        title = firstProduct.find('h2 span').first().text().trim();
+      if (!t) {
+        t = product.find('h2 a span').first().text().trim();
       }
-      if (!title) {
-        title = firstProduct.find('[data-cy="title-recipe"]').first().text().trim();
+      if (!t) {
+        t = product.find('[data-cy="title-recipe"]').first().text().trim();
       }
-      if (!title) {
-        // Last resort: get text from h2
-        title = firstProduct.find('h2').first().text().trim();
-      }
-      
-      // Only use query as fallback if we really can't find title
-      if (!title || title.length < 5) {
-        return null;
-      }
+      if (isInvalidTitle(t)) continue;
+      title = t;
+      firstProduct = product;
+      break;
+    }
+    
+    if (firstProduct && firstProduct.length && title) {
       
       // Extract size from title
       let size = null;
