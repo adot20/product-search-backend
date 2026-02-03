@@ -83,15 +83,18 @@ app.post('/search', async (req, res) => {
       
       try {
         console.log(`  → Scraping ${site}...`);
-        const productData = await scraper(query);
+        console.log(`  → Calling ${site} scraper...`);
         
+        const productData = await scraper(query);
+        console.log(`  → ${site} returned:`, productData ? 'DATA' : 'NULL');
+
         if (productData) {
           results.push({
             site: site,
-            ...productData
+              ...productData
           });
-          console.log(`  ✓ ${site}: Found product`);
-        } else {
+          console.log(`  ✓ ${site}: Found product - ${productData.title}`);
+      } else {
           // No product found, return search link
           const searchUrl = getSearchUrl(site, query);
           results.push({
