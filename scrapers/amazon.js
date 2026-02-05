@@ -1,20 +1,54 @@
 const axios = require('axios');
 const cheerio = require('cheerio');
 
+// Helper function to add random delay
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// Helper function to get random user agent
+function getRandomUserAgent() {
+  const userAgents = [
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:122.0) Gecko/20100101 Firefox/122.0'
+  ];
+  return userAgents[Math.floor(Math.random() * userAgents.length)];
+}
+
 async function scrapeAmazon(query) {
   const searchUrl = `https://www.amazon.in/s?k=${encodeURIComponent(query)}`;
   
   try {
+    // Add random delay to look more human
+    await delay(Math.random() * 1000 + 500);
+    
     const response = await axios.get(searchUrl, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'User-Agent': getRandomUserAgent(),
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
         'Accept-Language': 'en-US,en;q=0.9',
         'Accept-Encoding': 'gzip, deflate, br',
-        'Connection': 'keep-alive'
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-User': '?1',
+        'Cache-Control': 'max-age=0',
+        'DNT': '1'
       },
-      timeout: 15000
+      timeout: 20000,
+      validateStatus: function (status) {
+        return status < 500;
+      }
     });
+    
+    if (response.status === 403 || response.status === 429) {
+      console.log('[Amazon] Blocked or rate limited');
+      return null;
+    }
     
     const $ = cheerio.load(response.data);
     const firstProduct = $('[data-component-type="s-search-result"]').first();
