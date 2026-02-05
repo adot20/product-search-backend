@@ -97,10 +97,7 @@ async function scrapeNykaa(query) {
                 const product = products[0];
                 let title = product.productName || product.name || product.title || 
                              (product.brandName && product.productName ? `${product.brandName} ${product.productName}` : null);
-                const qn = (query || '').trim().toLowerCase().replace(/\s+/g, ' ');
-                if (title && (title.trim().toLowerCase().replace(/\s+/g, ' ') === qn)) {
-                  title = null;
-                }
+                
                 if (title) {
                   const price = product.mrp || product.price || product.finalPrice || product.sellingPrice || null;
                   const image = product.productImage || product.imageUrl || product.image || 
@@ -213,16 +210,12 @@ async function scrapeNykaa(query) {
       // Link
       let link = product.find('a').first().attr('href');
       
-      // Never use search query as product title (page sometimes echoes it)
-      const queryNorm = (query || '').trim().toLowerCase().replace(/\s+/g, ' ');
-      const titleNorm = (title || '').trim().toLowerCase().replace(/\s+/g, ' ');
-      if (titleNorm === queryNorm) {
-        title = null;
-      }
-      if (title || price) {
+      // FIXED: Don't filter out valid titles
+      // Only skip if title is suspiciously short (less than 10 chars) or obviously wrong
+      if (title && title.length >= 10) {
         const productUrl = link ? (link.startsWith('http') ? link : `https://www.nykaa.com${link}`) : searchUrl;
         return {
-          title: title || null,
+          title: title,
           size: size || null,
           price: price || 'Check website',
           rating: rating || '4.0',
