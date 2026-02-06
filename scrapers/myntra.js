@@ -18,24 +18,12 @@ function getRandomUserAgent() {
 }
 
 async function scrapeMyntra(query) {
-  // Try both URL formats
-  const searchUrl1 = `https://www.myntra.com/${encodeURIComponent(query)}`;
-  const searchUrl2 = `https://www.myntra.com/search?q=${encodeURIComponent(query)}`;
+  // OPTIMIZED: Use only the search URL format (not the old / format)
+  const searchUrl = `https://www.myntra.com/search?q=${encodeURIComponent(query)}`;
   
-  // Try first URL format
-  let result = await tryScrapeMyntra(searchUrl1, query);
-  if (result) return result;
-  
-  // If first fails, try alternate URL format
-  await delay(1000); // Extra delay between attempts
-  result = await tryScrapeMyntra(searchUrl2, query);
-  return result;
-}
-
-async function tryScrapeMyntra(searchUrl, query) {
   try {
-    // Add random delay
-    await delay(Math.random() * 1500 + 1000); // Longer delay for Myntra (1-2.5s)
+    // OPTIMIZED: Reduced delay from 1000-2500ms to 500-1000ms
+    await delay(Math.random() * 500 + 500);
     
     const response = await axios.get(searchUrl, {
       headers: {
@@ -54,7 +42,7 @@ async function tryScrapeMyntra(searchUrl, query) {
         'DNT': '1',
         'Pragma': 'no-cache'
       },
-      timeout: 35000, // Extra long timeout
+      timeout: 7000, // OPTIMIZED: Reduced from 35s to 7s
       maxRedirects: 5,
       validateStatus: function (status) {
         return status < 500;
