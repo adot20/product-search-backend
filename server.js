@@ -1,25 +1,28 @@
 const express = require('express');
 const cors = require('cors');
 
-// Import all scrapers
-const { scrapeAmazon } = require('./scrapers/amazon');
-const { scrapeFlipkart } = require('./scrapers/flipkart');
-const { scrapeMyntra } = require('./scrapers/myntra');
-const { scrapeAjio } = require('./scrapers/ajio');
-const { scrapeNykaa } = require('./scrapers/nykaa');
-
-let scrapeTira;
-try {
-  const tiraModule = require('./scrapers/tira');
-  scrapeTira = tiraModule.scrapeTira;
-  if (typeof scrapeTira !== 'function') {
-    console.warn('⚠️  Tira scraper not a function (scrapers/tira.js must export: module.exports = { scrapeTira }; ). Got:', typeof scrapeTira);
-    scrapeTira = undefined;
+// Safely load all scrapers - won't crash if files are missing
+function loadScraper(name, path) {
+  try {
+    const module = require(path);
+    const scraperFn = module[`scrape${name.charAt(0).toUpperCase() + name.slice(1)}`];
+    if (typeof scraperFn !== 'function') {
+      console.warn(`⚠️  ${name} scraper not a function. Got:`, typeof scraperFn);
+      return undefined;
+    }
+    console.log(`✅ Loaded ${name} scraper`);
+    return scraperFn;
+  } catch (e) {
+    console.warn(`⚠️  ${name} scraper failed to load:`, e.message);
+    return undefined;
   }
-} catch (e) {
-  console.error('⚠️  Tira scraper failed to load:', e.message);
-  scrapeTira = undefined;
 }
+
+// Load all scrapers safely
+const scrapeAmazon = loadScraper('amazon', './scrapers/amazon');
+const scrapeFlipkart = loadScraper('flipkart', './scrapers/flipkart');
+const scrapeMyntra = loadScraper('myntra', './scrapers/myntra');
+const scrapeNykaa = loadScraper('nykaa', './scrapers/nykaa');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -42,13 +45,8 @@ const scrapers = {
   amazon: scrapeAmazon,
   flipkart: scrapeFlipkart,
   myntra: scrapeMyntra,
-  ajio: scrapeAjio,
-  nykaa: scrapeNykaa,
-  tira: scrapeTira
+  nykaa: scrapeNykaa
 };
-if (!scrapers.tira) {
-  console.warn('⚠️  Tira will show "Site not supported" until scrapers/tira.js is fixed and redeployed.');
-}
 
 // Helper function to generate search URLs
 function getSearchUrl(site, query) {
@@ -57,9 +55,7 @@ function getSearchUrl(site, query) {
     amazon: `https://www.amazon.in/s?k=${encoded}`,
     flipkart: `https://www.flipkart.com/search?q=${encoded}`,
     myntra: `https://www.myntra.com/${encoded}`,
-    ajio: `https://www.ajio.com/search/?text=${encoded}`,
-    nykaa: `https://www.nykaa.com/search/result/?q=${encoded}`,
-    tira: `https://www.tirabeauty.com/search?q=${encoded}`
+    nykaa: `https://www.nykaa.com/search/result/?q=${encoded}`
   };
   return urls[site] || '';
 }
