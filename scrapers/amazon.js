@@ -21,8 +21,8 @@ async function scrapeAmazon(query) {
   const searchUrl = `https://www.amazon.in/s?k=${encodeURIComponent(query)}`;
   
   try {
-    // Add random delay to look more human
-    await delay(Math.random() * 1000 + 500);
+    // Optimized delay - reduced from 500-1500ms to 300-800ms
+    await delay(Math.random() * 500 + 300);
     
     const response = await axios.get(searchUrl, {
       headers: {
@@ -39,7 +39,7 @@ async function scrapeAmazon(query) {
         'Cache-Control': 'max-age=0',
         'DNT': '1'
       },
-      timeout: 20000,
+      timeout: 7000, // Reduced from 20s to 7s (server timeout is 8s)
       validateStatus: function (status) {
         return status < 500;
       }
