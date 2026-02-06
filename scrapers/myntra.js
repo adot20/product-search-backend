@@ -11,18 +11,31 @@ function getRandomUserAgent() {
   const userAgents = [
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:122.0) Gecko/20100101 Firefox/122.0'
   ];
   return userAgents[Math.floor(Math.random() * userAgents.length)];
 }
 
 async function scrapeMyntra(query) {
-  // Myntra search URL format: https://www.myntra.com/query (direct path format)
-  const searchUrl = `https://www.myntra.com/${encodeURIComponent(query)}`;
+  // Try both URL formats
+  const searchUrl1 = `https://www.myntra.com/${encodeURIComponent(query)}`;
+  const searchUrl2 = `https://www.myntra.com/search?q=${encodeURIComponent(query)}`;
   
+  // Try first URL format
+  let result = await tryScrapeMyntra(searchUrl1, query);
+  if (result) return result;
+  
+  // If first fails, try alternate URL format
+  await delay(1000); // Extra delay between attempts
+  result = await tryScrapeMyntra(searchUrl2, query);
+  return result;
+}
+
+async function tryScrapeMyntra(searchUrl, query) {
   try {
     // Add random delay
-    await delay(Math.random() * 1000 + 500);
+    await delay(Math.random() * 1500 + 1000); // Longer delay for Myntra (1-2.5s)
     
     const response = await axios.get(searchUrl, {
       headers: {
@@ -38,9 +51,11 @@ async function scrapeMyntra(query) {
         'Sec-Fetch-Site': 'cross-site',
         'Sec-Fetch-User': '?1',
         'Cache-Control': 'max-age=0',
-        'DNT': '1'
+        'DNT': '1',
+        'Pragma': 'no-cache'
       },
-      timeout: 32000,
+      timeout: 35000, // Extra long timeout
+      maxRedirects: 5,
       validateStatus: function (status) {
         return status < 500;
       }
@@ -53,24 +68,20 @@ async function scrapeMyntra(query) {
     
     const $ = cheerio.load(response.data);
     
-    // Strategy 1: Try to find product data in script tags (Myntra embeds JSON)
+    // Strategy 1: Try to find product data in script tags (most reliable)
     const scripts = $('script').toArray();
     for (const script of scripts) {
       const content = $(script).html();
-      if (content && (content.includes('searchData') || content.includes('pdpData') || content.includes('__myx'))) {
+      if (content && (content.includes('searchData') || content.includes('pdpData') || content.includes('__myx') || content.includes('products'))) {
         try {
           // Try multiple JSON extraction patterns
           let match = content.match(/window\.__myx\s*=\s*({.+?});/s);
-          if (!match) {
-            match = content.match(/__myx\s*=\s*({.+?});/s);
-          }
-          if (!match) {
-            match = content.match(/searchData\s*:\s*({.+?})/s);
-          }
+          if (!match) match = content.match(/__myx\s*=\s*({.+?});/s);
+          if (!match) match = content.match(/searchData\s*:\s*({.+?})/s);
+          if (!match) match = content.match(/"searchData"\s*:\s*({.+?})/s);
           
           if (match) {
             const jsonStr = match[1];
-            // Try to extract valid JSON
             let data;
             try {
               data = JSON.parse(jsonStr);
@@ -78,7 +89,11 @@ async function scrapeMyntra(query) {
               // Try to find JSON object boundaries
               const jsonMatch = jsonStr.match(/\{.*"products".*\}/s);
               if (jsonMatch) {
-                data = JSON.parse(jsonMatch[0]);
+                try {
+                  data = JSON.parse(jsonMatch[0]);
+                } catch (e2) {
+                  continue;
+                }
               } else {
                 continue;
               }
@@ -97,7 +112,39 @@ async function scrapeMyntra(query) {
             }
             
             if (products && products.length > 0) {
-              const product = products[0];
+              // Use Flipkart-style smart matching
+              const searchTerms = query.toLowerCase().split(/\s+/).filter(t => t.length > 3);
+              let bestMatch = null;
+              let bestScore = 0;
+              
+              for (const product of products) {
+                const title = product.brand && product.product 
+                  ? `${product.brand} ${product.product}`.trim()
+                  : product.productName || product.title || product.name || null;
+                
+                if (!title) continue;
+                
+                const titleLower = title.toLowerCase();
+                let matchScore = 0;
+                
+                for (const term of searchTerms) {
+                  const wordRegex = new RegExp(`\\b${term}\\b`, 'i');
+                  if (wordRegex.test(titleLower)) {
+                    matchScore += 3;
+                  } else if (titleLower.includes(term)) {
+                    matchScore += 1;
+                  }
+                }
+                
+                if (matchScore > bestScore) {
+                  bestScore = matchScore;
+                  bestMatch = product;
+                }
+              }
+              
+              // Use best match if score is decent, otherwise first product
+              const product = (bestMatch && bestScore >= 2) ? bestMatch : products[0];
+              
               const title = product.brand && product.product 
                 ? `${product.brand} ${product.product}`.trim()
                 : product.productName || product.title || product.name || null;
@@ -107,8 +154,17 @@ async function scrapeMyntra(query) {
                 const image = product.searchImage || product.image || (product.images && product.images[0]?.src) || null;
                 const link = product.landingPageUrl || product.url || product.productUrl || null;
                 
+                // Extract size
+                let size = null;
+                const sizeMatch = title.match(/\(([0-9]+\s?(ml|g|kg|l|oz|gm|GM|ML|L|Pack))\)/i) ||
+                                  title.match(/([0-9]+\s?(ml|g|kg|l|oz|gm|GM|ML|L|Pack))/i);
+                if (sizeMatch) {
+                  size = sizeMatch[1] || sizeMatch[0];
+                }
+                
                 return {
                   title: title,
+                  size: size || null,
                   price: price ? `₹${price}` : 'Check website',
                   rating: product.rating ? product.rating.toString() : '4.0',
                   image: image || null,
@@ -119,69 +175,101 @@ async function scrapeMyntra(query) {
             }
           }
         } catch (e) {
-          // Continue to next script
           continue;
         }
       }
     }
     
-    // Strategy 2: HTML scraping - try multiple product card selectors
-    let product = $('.product-base').first();
-    if (product.length === 0) {
-      product = $('[class*="product-base"]').first();
+    // Strategy 2: HTML scraping with smart matching (like Flipkart)
+    let allProducts = $('.product-base, [class*="product-base"]');
+    if (allProducts.length === 0) {
+      allProducts = $('li[class*="product-"]');
     }
-    if (product.length === 0) {
-      product = $('li[class*="product-"]').first();
+    if (allProducts.length === 0) {
+      allProducts = $('div[class*="ProductContainer"]');
     }
-    if (product.length === 0) {
-      product = $('div[class*="ProductContainer"]').first();
+    if (allProducts.length === 0) {
+      allProducts = $('a[href*="/buy/"]').parent();
     }
     
-    if (product.length) {
-      // Try multiple selectors for brand and name
-      let brand = product.find('.product-brand').first().text().trim();
-      if (!brand) {
-        brand = product.find('h3[class*="brand"], [class*="brand-name"]').first().text().trim();
-      }
+    if (allProducts.length > 0) {
+      const searchTerms = query.toLowerCase().split(/\s+/).filter(t => t.length > 3);
+      let bestMatch = null;
+      let bestScore = 0;
+      let fallback = null;
       
-      let name = product.find('.product-product').first().text().trim();
-      if (!name) {
-        name = product.find('h4[class*="product"], [class*="product-name"]').first().text().trim();
-      }
-      if (!name) {
-        name = product.find('a[class*="product"]').first().attr('title') || '';
-      }
-      
-      // Try multiple price selectors
-      let price = product.find('.product-discountedPrice').first().text().trim();
-      if (!price) {
-        price = product.find('[class*="discountedPrice"]').first().text().trim();
-      }
-      if (!price) {
-        price = product.find('.product-price').first().text().trim();
-      }
-      if (!price) {
-        // Search for price pattern
-        const priceText = product.text();
-        const priceMatch = priceText.match(/₹[\d,]+/);
-        if (priceMatch) {
-          price = priceMatch[0];
+      allProducts.each((i, elem) => {
+        const product = $(elem);
+        
+        // Get brand and name
+        let brand = product.find('.product-brand, [class*="brand"]').first().text().trim();
+        let name = product.find('.product-product, [class*="product-name"]').first().text().trim();
+        
+        if (!name) {
+          name = product.find('a[class*="product"]').first().attr('title') || '';
         }
-      }
+        
+        const title = `${brand} ${name}`.trim();
+        if (!title || title.length < 5) return;
+        
+        const titleLower = title.toLowerCase();
+        let matchScore = 0;
+        
+        for (const term of searchTerms) {
+          const wordRegex = new RegExp(`\\b${term}\\b`, 'i');
+          if (wordRegex.test(titleLower)) {
+            matchScore += 3;
+          } else if (titleLower.includes(term)) {
+            matchScore += 1;
+          }
+        }
+        
+        if (i === 0) {
+          fallback = { product, title, score: matchScore };
+        }
+        
+        if (matchScore > bestScore) {
+          bestScore = matchScore;
+          bestMatch = { product, title, score: matchScore };
+        }
+      });
       
-      // Get image
-      let image = product.find('img').first().attr('src');
-      if (!image) image = product.find('img').first().attr('data-src');
-      if (!image) image = product.find('img').first().attr('data-lazy-src');
+      const selected = (bestMatch && bestMatch.score >= 2) ? bestMatch : fallback;
       
-      // Get link
-      let link = product.find('a').first().attr('href');
-      
-      if (brand || name || price) {
-        const title = `${brand || ''} ${name || ''}`.trim() || query;
+      if (selected && selected.title) {
+        const product = selected.product;
+        const title = selected.title;
+        
+        // Get price
+        let price = product.find('.product-discountedPrice, [class*="discountedPrice"]').first().text().trim();
+        if (!price) {
+          price = product.find('.product-price').first().text().trim();
+        }
+        if (!price) {
+          const priceText = product.text();
+          const priceMatch = priceText.match(/₹[\d,]+/);
+          if (priceMatch) price = priceMatch[0];
+        }
+        
+        // Extract size
+        let size = null;
+        const sizeMatch = title.match(/\(([0-9]+\s?(ml|g|kg|l|oz|gm|GM|ML|L|Pack))\)/i) ||
+                          title.match(/([0-9]+\s?(ml|g|kg|l|oz|gm|GM|ML|L|Pack))/i);
+        if (sizeMatch) {
+          size = sizeMatch[1] || sizeMatch[0];
+        }
+        
+        // Get image
+        let image = product.find('img').first().attr('src');
+        if (!image) image = product.find('img').first().attr('data-src');
+        if (!image) image = product.find('img').first().attr('data-lazy-src');
+        
+        // Get link
+        let link = product.find('a').first().attr('href');
         
         return {
           title: title,
+          size: size || null,
           price: price || 'Check website',
           rating: '4.0',
           image: image || null,
