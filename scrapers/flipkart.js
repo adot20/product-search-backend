@@ -21,8 +21,8 @@ async function scrapeFlipkart(query) {
   const searchUrl = `https://www.flipkart.com/search?q=${encodeURIComponent(query)}`;
   
   try {
-    // Add random delay to avoid rate limiting
-    await delay(Math.random() * 1000 + 500);
+    // Optimized delay - reduced from 500-1500ms to 300-800ms
+    await delay(Math.random() * 500 + 300);
     
     const response = await axios.get(searchUrl, {
       headers: {
@@ -40,7 +40,7 @@ async function scrapeFlipkart(query) {
         'Cache-Control': 'max-age=0',
         'DNT': '1'
       },
-      timeout: 25000,
+      timeout: 7000, // Reduced from 25s to 7s
       maxRedirects: 5,
       validateStatus: function (status) {
         return status < 500;
