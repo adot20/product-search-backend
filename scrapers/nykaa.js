@@ -20,8 +20,8 @@ async function scrapeNykaa(query) {
   const searchUrl = `https://www.nykaa.com/search/result/?q=${encodeURIComponent(query)}`;
   
   try {
-    // Add random delay
-    await delay(Math.random() * 1000 + 500);
+    // Optimized delay - reduced from 500-1500ms to 300-800ms
+    await delay(Math.random() * 500 + 300);
     
     const response = await axios.get(searchUrl, {
       headers: {
@@ -40,7 +40,7 @@ async function scrapeNykaa(query) {
         'Cache-Control': 'max-age=0',
         'DNT': '1'
       },
-      timeout: 25000,
+      timeout: 7000, // OPTIMIZED: Reduced from 25s to 7s
       maxRedirects: 5,
       validateStatus: function (status) {
         return status < 500;
